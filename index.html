@@ -1,155 +1,66 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>ICAO Trainer — Cockpit</title>
-<style>
-  body { background:#071422; color:#dff6ff; font-family: Inter, Arial; margin:0; padding:16px; }
-  .panel { background: linear-gradient(#061827, #0b2a3a); border-radius:12px; padding:16px; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
-  .cockpit { display:grid; grid-template-columns: 1fr 360px; gap:16px; align-items:start; }
-  .screen { background:#01131b; border-radius:8px; padding:12px; min-height:320px; color:#9ff1ff; font-size:14px; }
-  .controls { display:flex; flex-direction:column; gap:8px; }
-  button { background:#084055; border:1px solid #0aa5c3; color:#dff6ff; padding:10px 12px; border-radius:8px; cursor:pointer; font-weight:600; }
-  button.record { background:linear-gradient(#ff6b6b,#ff2e2e); border-color:#ff9a9a; }
-  .transcript { font-family: monospace; background:#02171c; padding:10px; border-radius:6px; min-height:80px; }
-  .log { max-height:220px; overflow:auto; padding:8px; background:#001117; border-radius:6px; }
-  .small { font-size:12px; color:#aee9f8; }
-</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICAO Trainer Cockpit</title>
 </head>
 <body>
-<div class="panel cockpit">
-  <div>
-    <h2>ICAO / ATC Trainer — Cockpit</h2>
-    <div class="screen">
-      <div id="sessionMode" class="small">Modalità: <strong id="modeLabel">Esaminatore + Controllore</strong></div>
-      <div style="margin-top:8px;">
-        <div class="small">Scenari rapidi:</div>
-        <select id="scenario">
-          <option value="">— Scegli scenario —</option>
-          <option value="departure_clearance">Departure clearance (Tower)</option>
-          <option value="approach_vectors">Approach vectors</option>
-          <option value="engine_failure">Engine vibration in cruise</option>
-          <option value="readback">Readback accuracy test</option>
-        </select>
-        <button id="startScenario">Avvia scenario</button>
-      </div>
+<h1>ICAO Trainer Cockpit</h1>
 
-      <hr style="margin:8px 0;border:none;border-top:1px solid #02343f">
-
-      <div class="small">Trascrizione (Whisper):</div>
-      <div id="transcript" class="transcript"></div>
-
-      <div style="margin-top:8px;">
-        <div class="small">Feedback:</div>
-        <div id="feedback" class="log"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="controls panel">
-    <div>
-      <div class="small">Registrazione:</div>
-      <button id="recordBtn" class="record">Start / Stop Recording</button>
-      <div class="small" style="margin-top:6px;">Livello ICAO (simulazione): 
-        <select id="icaoLevel">
-          <option value="basic">Basic</option>
-          <option value="intermediate" selected>Intermediate</option>
-          <option value="refresh">Refresh</option>
-        </select>
-      </div>
-    </div>
-
-    <div style="margin-top:12px;">
-      <div class="small">Output TTS (browser):</div>
-      <button id="playResponse">Riproduci ultima risposta</button>
-    </div>
-
-    <div style="margin-top:12px;">
-      <div class="small">Log / Comunicazioni ATC:</div>
-      <div id="atcLog" class="log"></div>
-    </div>
-
-    <div style="margin-top:12px;">
-      <div class="small">Impostazioni:</div>
-      <label class="small"><input id="phoneticHints" type="checkbox" checked> Mostra suggerimenti fonetici</label>
-    </div>
-  </div>
-</div>
+<button id="startBtn">Start Recording</button>
+<button id="stopBtn">Stop Recording</button>
+<p>Trascrizione: <span id="transcript"></span></p>
+<p>Feedback: <span id="feedback"></span></p>
+<p>ATC Message: <span id="atcMessage"></span></p>
 
 <script>
-const BACKEND_URL = "REPLACE_WITH_BACKEND_URL"; // <-- SOSTITUISCI con il tuo backend Vercel
+  // ----------------------------
+  // URL del backend già impostato
+  const BACKEND_URL = "https://icao-trainer-backend.vercel.app";
+  // ----------------------------
 
-let mediaRecorder, audioChunks=[];
-const recordBtn = document.getElementById('recordBtn');
-const transcriptBox = document.getElementById('transcript');
-const feedbackBox = document.getElementById('feedback');
-const atcLog = document.getElementById('atcLog');
-const playBtn = document.getElementById('playResponse');
-let lastAssistantText = '';
+  let mediaRecorder;
+  let audioChunks = [];
 
-recordBtn.onclick = async () => {
-  if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-    if (!navigator.mediaDevices) { alert('Browser non supportato per microfono'); return; }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const transcriptEl = document.getElementById('transcript');
+  const feedbackEl = document.getElementById('feedback');
+  const atcEl = document.getElementById('atcMessage');
+
+  startBtn.onclick = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(audioChunks, { type:'audio/webm' });
-      transcriptBox.textContent = 'Caricamento audio, elaborazione...';
-      await sendAudio(blob);
-    };
     mediaRecorder.start();
-    recordBtn.textContent = 'Stop Recording';
-    recordBtn.classList.add('recording');
-  } else {
+  };
+
+  stopBtn.onclick = async () => {
     mediaRecorder.stop();
-    recordBtn.textContent = 'Start / Stop Recording';
-    recordBtn.classList.remove('recording');
-  }
-};
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const formData = new FormData();
+      formData.append('file', audioBlob);
 
-async function sendAudio(blob) {
-  try {
-    const fd = new FormData();
-    fd.append('file', blob, 'speech.webm');
-    fd.append('icaoLevel', document.getElementById('icaoLevel').value);
-    fd.append('phoneticHints', document.getElementById('phoneticHints').checked ? '1' : '0');
-    fd.append('scenario', document.getElementById('scenario').value || '');
-    const res = await fetch(BACKEND_URL + '/api/audio', { method:'POST', body:fd });
-    const j = await res.json();
-    if (j.error) { transcriptBox.textContent = 'Errore: ' + j.error; return; }
-    transcriptBox.textContent = j.transcript || '';
-    feedbackBox.innerHTML = j.feedback_html || j.feedback || '';
-    atcLog.innerHTML = (j.atc_message_html || j.atc_message || '') + '<hr>' + atcLog.innerHTML;
-    lastAssistantText = j.atc_message || j.atc_message_text || '';
-  } catch (e) {
-    transcriptBox.textContent = 'Errore connessione: ' + e.message;
-  }
-}
+      // Invia audio al backend
+      const res = await fetch(`${BACKEND_URL}/api/audio`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      transcriptEl.textContent = data.transcript;
+      feedbackEl.textContent = data.feedback;
+      atcEl.textContent = data.atc_message;
 
-playBtn.onclick = () => {
-  if (!lastAssistantText) { alert('Nessuna risposta ancora.'); return; }
-  const u = new SpeechSynthesisUtterance(lastAssistantText);
-  u.lang = 'en-GB';
-  window.speechSynthesis.speak(u);
-}
-
-document.getElementById('startScenario').onclick = () => {
-  const sc = document.getElementById('scenario').value;
-  if (!sc) { alert('Scegli uno scenario'); return; }
-  fetch(BACKEND_URL + '/api/scenario', {
-    method:'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ scenario: sc })
-  }).then(r=>r.json()).then(j=>{
-    if (j.prompt) {
-      atcLog.innerHTML = '<strong>Scenario:</strong> ' + j.prompt + '<hr>' + atcLog.innerHTML;
-      lastAssistantText = j.prompt;
-    }
-  });
-};
+      // TTS semplice
+      const utter = new SpeechSynthesisUtterance(data.atc_message);
+      window.speechSynthesis.speak(utter);
+    };
+  };
 </script>
+
 </body>
 </html>
+
